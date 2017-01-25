@@ -1,5 +1,6 @@
 # Some utility classes to represent a PDB structure
 
+
 class Atom:
     """
     A simple class for an amino acid residue
@@ -12,6 +13,7 @@ class Atom:
     # Overload the __repr__ operator to make printing simpler.
     def __repr__(self):
         return self.type
+
 
 class Residue:
     """
@@ -26,6 +28,7 @@ class Residue:
     # Overload the __repr__ operator to make printing simpler.
     def __repr__(self):
         return "{0} {1}".format(self.type, self.number)
+
 
 class ActiveSite:
     """

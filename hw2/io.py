@@ -10,15 +10,13 @@ def read_active_sites(dir):
     Input: directory
     Output: list of ActiveSite instances
     """
-    files = glob.glob(dir + '/*.pdb')
-
     active_sites = []
     # iterate over each .pdb file in the given directory
     for filepath in glob.iglob(os.path.join(dir, "*.pdb")):
 
         active_sites.append(read_active_site(filepath))
 
-    print("Read in %d active sites"%len(active_sites))
+    print("Read in %d active sites" % len(active_sites))
 
     return active_sites
 
@@ -34,7 +32,7 @@ def read_active_site(filepath):
     name = os.path.splitext(basename)
 
     if name[1] != ".pdb":
-        raise IOError("%s is not a PDB file"%filepath)
+        raise IOError("%s is not a PDB file" % filepath)
 
     active_site = ActiveSite(name[0])
 

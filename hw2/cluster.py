@@ -1,4 +1,5 @@
-from .utils import Atom, Residue, ActiveSite
+# from .utils import Atom, Residue, ActiveSite
+
 
 def compute_similarity(site_a, site_b):
     """
@@ -31,7 +32,7 @@ def cluster_by_partitioning(active_sites):
 
 def cluster_hierarchically(active_sites):
     """
-    Cluster the given set of ActiveSite instances using a hierarchical algorithm.                                                                  #
+    Cluster a set of ActiveSite instances using a hierarchical algorithm.
 
     Input: a list of ActiveSite instances
     Output: a list of clusterings
