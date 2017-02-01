@@ -29,6 +29,15 @@ class Residue:
     def __repr__(self):
         return "{0} {1}".format(self.type, self.number)
 
+    @property
+    def alpha_carbon(self):
+        """ Lookup the atom representing the alpha carbon """
+        for atom in self.atoms:
+            if atom.type == 'CA':
+                return atom
+        # Le sad: no alpha carbon found
+        return None
+
 
 class ActiveSite:
     """
