@@ -1,6 +1,37 @@
-# from .utils import Atom, Residue, ActiveSite
-
 import numpy as np
+
+from .blosum62 import BLOSUM62
+
+# Constants
+
+# Probability of an amino acid being the catalytic residue in the active site
+# Kumar, S., Kumar, N., and Gaur, R.K. (2011). Amino acid frequency
+# distribution at enzymatic active site. IIOABJ 2, 23–30.
+ACTIVE_SITE_FREQ = {
+    "ALA": 0.0102,
+    "CYS": 0.0372,
+    "ASP": 0.1581,
+    "GLU": 0.1358,
+    "PHE": 0.0149,
+    "GLY": 0.0363,
+    "HIS": 0.1906,
+    "ILE": 0.0047,
+    "LYS": 0.0753,
+    "LEU": 0.0065,
+    "MET": 0.0028,
+    "ASN": 0.0381,
+    "PRO": 0.0019,
+    "GLN": 0.0242,
+    "ARG": 0.0819,
+    "SER": 0.0642,
+    "THR": 0.0372,
+    "VAL": 0.0019,
+    "TRP": 0.0140,
+    "TYR": 0.0642,
+}
+
+
+# Functions
 
 
 def compute_similarity(site_a, site_b):
@@ -11,23 +42,157 @@ def compute_similarity(site_a, site_b):
     Output: the similarity between them (a floating point number)
     """
 
+    # Modified CPASS active site comparison algorithm
+
+    # Combine protein substitution probability, alpha-carbon position
+    # similarity, and likelihood of a residue being the key member of the
+    # active site into a single similarity score
+
+    # Powers, R., Copeland, J.C., Germer, K., Mercier, K.A., Ramanathan, V.,
+    # and Revesz, P. (2006). Comparison of protein active site structures for
+    # functional annotation of proteins and drug design. Proteins: Structure,
+    # Function, and Bioinformatics 65, 124–135.
+
     similarity = 0.0
 
-    # Trivial algorithm, distance between alpha carbons
-    # FIXME: Align residues before comparing
-    # FIXME: Do something more sophisticated!!
-    for residue_a, residue_b in zip(site_a.residues, site_b.residues):
+    for residue_a in site_a.residues:
+        # Coordinates of alpha carbon
         ca_a = residue_a.alpha_carbon.coords
-        ca_b = residue_b.alpha_carbon.coords
 
-        similarity += np.sqrt(sum((a - b)**2 for a, b in zip(ca_a, ca_b)))
+        # Residue type
+        type_a = residue_a.type
 
-    # Fill in your code here!
+        freq_a = ACTIVE_SITE_FREQ[type_a]
+
+        # Compare this residue with **EVERY** residue in site_b
+        # exponentially weighting the contribution by distance
+        for residue_b in site_b.residues:
+            ca_b = residue_b.alpha_carbon.coords
+            type_b = residue_b.type
+
+            score = BLOSUM62[(type_a, type_b)]
+            dist = np.sqrt(sum((a - b)**2 for a, b in zip(ca_a, ca_b)))
+            freq = ACTIVE_SITE_FREQ[type_b] * freq_a
+
+            # Within one angstrom, weigh all distances equally. This prevents
+            # noisy measurements from affecting the score too much
+            dist = dist - 1 if dist > 1 else 0
+
+            # Exponentially weight the distance
+            # This makes the contribution of non-close residues fall off
+            # quickly
+            
+            # Weigh by the BLOSUM score so identical residues contribute highly
+            # and distinct residues barely matter
+            
+            # The original paper has a term for proximity to the ligand, but
+            # we don't have that information, so instead weigh by how
+            # frequently this amino acid is found in an active sites
+            similarity += freq * np.exp(-dist) * score
 
     return similarity
 
 
-def cluster_by_partitioning(active_sites):
+def compute_similarity_matrix(active_sites):
+    """ Compute all pairwise similarities
+
+    :param active_sites:
+        An n-length list of the active sites
+    :returns:
+        An n x n numpy array of similarities
+    """
+    # Calculate pairwise similarity matrix
+    num_sites = len(active_sites)
+    similarity = np.zeros((num_sites, num_sites))
+    for i in range(num_sites):
+        for j in range(i, num_sites):
+            sim = compute_similarity(active_sites[i], active_sites[j])
+            similarity[i, j] = sim
+            similarity[j, i] = sim
+    return similarity
+
+
+def convert_similarity_to_distance(similarity):
+    """ Convert the similarity matrix to a distance matrix
+
+    :param similarity:
+        An n x n symmetric matrix where high values are CLOSER
+    :returns:
+        An n x n symmetric normalized distance matrix
+    """
+    num_sites = similarity.shape[0]
+    assert similarity.shape[1] == num_sites
+
+    # We're going to artificially constrain the diagonals to be 0.0 distance
+    # because anything else doesn't really make much sense
+    similarity = similarity.astype(np.float64)
+    max_similarity = np.max(similarity)
+    
+    # Normalize the maximum similarity to 1.0
+    # Distance is inverse similarity (0.0 = closest) (1.0 = farthest)
+    distance = 1.0 - similarity / max_similarity
+
+    # Force all the diagonal terms to be 0.0
+    distance[np.eye(num_sites, dtype=np.bool)] = 0.0
+    return distance
+
+
+def multidimensional_scaling(similarity, num_dims=2):
+    """ Convert a set of similarities (or distances) to a coordinate system
+
+    Distance matricies make calculating things like average coordinates really
+    painful. By embedding our similarity scores in a low dimensional space, we
+    get all the advantages of a set of features from a single scoring function
+    without having to worry about how that score is calculated.
+
+    This algorithm is a common alternative to tSNE for embedding high
+    dimensional data into a low dimensional space.
+
+    Algorithm from `Multidimensional Scaling <https://en.wikipedia.org/wiki/Multidimensional_scaling>`_
+
+    Borg, I., and Groenen, P.J.F. (2005). Modern multidimensional scaling:
+    theory and applications (New York: Springer).
+
+    :param similarity:
+        The complete pairwise similarity matrix (n x n)
+    :param num_dims:
+        The number of output dimensions to project it onto
+    :returns:
+        An n x ndim list of coordinates for each element in similarity
+    """
+
+    similarity = similarity.copy()
+    num_sites = similarity.shape[0]
+    assert similarity.shape[1] == similarity.shape[0]
+    if num_sites < num_dims:
+        err = 'Cannot embed {} sites in {} dimensions'
+        err = err.format(num_sites, num_dims)
+        raise ValueError(err)
+    assert num_sites >= num_dims
+
+    distance = convert_similarity_to_distance(similarity)
+
+    # Create a centering matrix to center the proximity matrix
+    centering = np.eye(num_sites) - np.ones((num_sites, num_sites)) / num_sites
+
+    # In MATLAB: B = -0.5 * J * (D.^2) * J
+    # But it looks cooler in python because of the mATrix multiply
+    proximity = -0.5 * (centering @ distance**2 @ centering)
+
+    # Extract the num_dims largest eigenvalues
+    evals, evects = np.linalg.eig(proximity)
+
+    # Because LAPACK is dumb, we have to sort the eigenvalues
+    # Find the indicies needed to sort the array and take the top n
+    indicies = np.argpartition(-evals, num_dims)[:num_dims]
+
+    evals = np.diag(evals[indicies])
+    evects = evects[:, indicies]
+
+    return evects @ np.sqrt(evals)
+
+
+def cluster_by_partitioning(active_sites, decay=0.5, num_iters=100):
     """
     Cluster a given set of ActiveSite instances using a partitioning method.
 
@@ -35,6 +200,14 @@ def cluster_by_partitioning(active_sites):
     Output: a clustering of ActiveSite instances
             (this is really a list of clusters, each of which is list of
             ActiveSite instances)
+    
+    :param decay:
+        The damping factor for messages
+        Faster decay creates fewer clusters (paper value: 0.5)
+
+    :param num_iters:
+        Number of iterations to use
+        More iterations creates fewer clusters (paper value: 100)
     """
 
     # Affinity propagation
@@ -59,29 +232,13 @@ def cluster_by_partitioning(active_sites):
     # selection of a cluster size, only a damping term that determines how
     # quickly messages decay.
 
-    # Parameters
-
-    # Damping factor
-    # Faster decay creates fewer clusters (paper value: 0.5)
-    decay = 0.1
-
-    # Number of iterations to use
-    # More iterations creates fewer clusters (paper value: 100)
-    num_iters = 100
-
-    # Calculate pairwise distance matrix
+    # Calculate pairwise similarity matrix
     num_sites = len(active_sites)
-    similarity = np.empty((num_sites, num_sites))
-    measured_sims = []
-    for i in range(num_sites):
-        for j in range(i+1, num_sites):
-            sim = compute_similarity(active_sites[i], active_sites[j])
-            measured_sims.append(sim)
-            similarity[i, j] = sim
-            similarity[j, i] = sim
+    similarity = compute_similarity_matrix(active_sites)
 
     # For an unbiased seeding, set the diagonals to the median
-    median_similarity = np.median(measured_sims)
+    similarity[np.eye(num_sites, dtype=np.bool)] = np.nan
+    median_similarity = np.nanmedian(similarity.flatten())
     for k in range(num_sites):
         similarity[k, k] = median_similarity
 
@@ -164,7 +321,13 @@ def cluster_hierarchically(active_sites):
     Output: a list of clusterings
             (each clustering is a list of lists of Sequence objects)
     """
+    similarity = compute_similarity_matrix(active_sites)
 
-    # Fill in your code here!
+    # Convert similarity to distance
+    # Rescale so max similarity is 1, min is 0, then invert
+    min_sim = np.min(similarity)
+    max_sim = np.max(similarity)
+    distance = 1.0 - (similarity - min_sim) / (max_sim - min_sim)
+
 
     return []
