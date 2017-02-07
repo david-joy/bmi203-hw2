@@ -30,6 +30,145 @@ ACTIVE_SITE_FREQ = {
     "TYR": 0.0642,
 }
 
+# Classes
+
+
+class MSCluster(object):
+    """ Macnaughton-Smith Clustering tree
+
+    Store a mapping of coordinates to original indicies in the active site
+    array. This way I don't get headaches from a bunch of nested lists.
+    
+    It preforms a 2-way split at each level
+
+    :param coords:
+        An n x k list of coordinates, n > k
+    :param index:
+        An n x 1 list of indicies mapping coords to active_sites
+        If None, coords is assumed to be the entire array
+    """
+
+    def __init__(self, coords, index=None):
+        self.coords = coords
+        if index is None:
+            index = np.arange(self.coords.shape[0])
+        self.index = index  # Index in the **original** active_site array
+
+        self.children = []
+
+    def cluster(self):
+        """ Recursively split all of coords into child nodes """
+
+        nodes = [self]
+        while len(nodes) > 0:
+            node = nodes.pop(0)
+            node.cluster_once()
+            nodes.extend(node.children)
+
+    def cluster_once(self):
+        """ Work out the splits for this node """
+
+        # Base case - Can't split a node with two or fewer members
+        if self.coords.shape[0] <= 2:
+            self.children = []
+            return
+
+        # Find the farthest node from the center
+        cluster_center = np.mean(self.coords, axis=0)[np.newaxis, :]
+        cluster_dist = np.sum((self.coords - cluster_center)**2, axis=1)
+        
+        # Add the object farthest from the center to the splinter group
+        splinter_indicies = [int(np.argmax(cluster_dist))]
+
+        while True:
+            remainder_indicies = [i for i in range(self.coords.shape[0])
+                                  if i not in splinter_indicies]
+            splinter_coords = self.coords[splinter_indicies, :]
+            remainder_coords = self.coords[remainder_indicies, :]
+
+            if remainder_coords.shape[0] < 2:
+                # Everything splintered off (happens if we try to split a 2 point node)
+                remainder_indicies = [i for i in range(self.coords.shape[0])]
+                splinter_indicies = []
+                break
+
+            # Try to find a point nearer to the splinter group than the remainder group
+            diffs = self.calc_splinter_diffs(remainder_coords, splinter_coords)
+
+            if np.all(diffs <= 0):
+                # Splinter group failed, merge back into the fold
+                if len(splinter_indicies) <= 1:
+                    remainder_indicies = [i for i in range(self.coords.shape[0])]
+                    splinter_indicies = []
+                break
+
+            # Add the least happy element to the splinter group
+            next_splinter = remainder_indicies[np.argmax(diffs)]
+            splinter_indicies.append(next_splinter)
+
+        # Now, if we got any splits, make a tree
+        if len(splinter_indicies) > 0 and len(remainder_indicies) > 0:
+            splinter = MSCluster(coords=self.coords[splinter_indicies, :],
+                                 index=self.index[splinter_indicies])
+            remainder = MSCluster(coords=self.coords[remainder_indicies, :],
+                                  index=self.index[remainder_indicies])
+            self.children = [splinter, remainder]
+        else:
+            self.children = []
+
+    def calc_splinter_diffs(self, remainder_coords, splinter_coords):
+        """ Calculate the splinter set differences
+
+        Diff(X) = mean(dist(X, A)) - mean(dist(X, B))
+
+        where A is the remainder set and B is the splinter set.
+
+        :param remainder_coords:
+            The n x k coords of the objects in the remainder set
+        :param splinter_coords:
+            The m x k coords of the objects in the splinter set
+        :returns:
+            An n x 1 array of differences between average distances for each
+            object in the remainder set
+        """
+
+        diffs = []
+        for i, coord in enumerate(remainder_coords):
+
+            diff_a = []
+            for j, rc in enumerate(remainder_coords):
+                # Not really fair to consider distance to itself
+                if i == j:
+                    continue
+                diff_a.append(np.sum((coord - rc)**2))
+            diff_a = np.mean(diff_a)
+
+            diff_b = []
+            for sc in splinter_coords:
+                diff_b.append(np.sum((coord - sc)**2))
+
+            diff_b = np.mean(diff_b)
+            diffs.append(diff_a - diff_b)
+        return np.array(diffs)
+
+    def group(self, data):
+        """ Using the splits in cluster, return a grouping of data
+
+        :param data:
+            A list of objects with the same length as coords
+        :returns:
+            A nested list of the objects clustered
+        """
+        # Base case
+        if self.children == []:
+            return [data[i] for i in self.index]
+
+        # Force the childeren to group the data
+        grouping = []
+        for child in self.children:
+            grouping.append(child.group(data))
+        return grouping
+
 
 # Functions
 
@@ -313,7 +452,7 @@ def cluster_by_partitioning(active_sites, decay=0.5, num_iters=100):
     return [v for v in final_clusters.values()]
 
 
-def cluster_hierarchically(active_sites):
+def cluster_hierarchically(active_sites, num_dims=2):
     """
     Cluster a set of ActiveSite instances using a hierarchical algorithm.
 
@@ -321,13 +460,22 @@ def cluster_hierarchically(active_sites):
     Output: a list of clusterings
             (each clustering is a list of lists of Sequence objects)
     """
+    
+    # Macnaughton-Smith Divisive Clustering
+    # Macnaughton-Smith, P., Williams, W., Dale, M., and Mockett, L. (1964).
+    # Dissimilarity analysis: a new technique of hierarchical sub-division.
+    # Nature 202, 1034–1035.
+
+    # Seriously though, it's pretty crazy that you can do this O(N**2)
+    # Although the hidden eigenvalue calculation in MDS makes this O(N**3)
+    # There's probably a more clever way to do this, but it's hard with a
+    # general non-linear metric.
+
+    # Project the active site similarity into a metric space
     similarity = compute_similarity_matrix(active_sites)
+    coords = multidimensional_scaling(similarity, num_dims=num_dims)
 
-    # Convert similarity to distance
-    # Rescale so max similarity is 1, min is 0, then invert
-    min_sim = np.min(similarity)
-    max_sim = np.max(similarity)
-    distance = 1.0 - (similarity - min_sim) / (max_sim - min_sim)
-
-
-    return []
+    # Use a tree to run the MS Clustering algorithm
+    tree = MSCluster(coords)
+    tree.cluster()
+    return tree.group(active_sites)

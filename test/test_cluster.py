@@ -6,6 +6,29 @@ import os
 import numpy as np
 
 
+def test_mscluster():
+
+    coords = np.array([
+        [0, 1],
+        [1, 1],
+        [10, 0],
+        [10, 1],
+    ])
+
+    # Mock active sites with an index list
+    active_sites = [0, 1, 2, 3]
+
+    tree = cluster.MSCluster(coords)
+    tree.cluster()
+
+    res_sites = tree.group(active_sites)
+    exp_sites = [
+        [0, 1],
+        [2, 3],
+    ]
+    assert res_sites == exp_sites
+
+
 def test_multidimensional_scaling():
 
     similarity = np.array([
@@ -117,12 +140,22 @@ def test_partition_clustering():
 
 def test_hierarchical_clustering():
     # tractable subset
-    pdb_ids = [276, 4629, 10701]
+    pdb_ids = [276, 1806, 3458, 3733, 4629, 10701]
 
     active_sites = []
     for id in pdb_ids:
         filepath = os.path.join("data", "%i.pdb" % id)
         active_sites.append(io.read_active_site(filepath))
 
+    ac_names = {int(ac.name): ac for ac in active_sites}
+
     # update this assertion
-    assert cluster.cluster_hierarchically(active_sites) == []
+    res_clusters = cluster.cluster_hierarchically(active_sites)
+    exp_clusters = [
+        [ac_names[4629], ac_names[10701]],
+        [
+            [ac_names[3458], ac_names[3733]],
+            [ac_names[276], ac_names[1806]],
+        ],
+    ]
+    assert res_clusters == exp_clusters
