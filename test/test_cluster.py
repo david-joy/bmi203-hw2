@@ -89,7 +89,7 @@ def test_similarity():
     sim_b2c = cluster.compute_similarity(activesite_b, activesite_c)
 
     # Similarity scores, most similar should be itself
-    assert sim_a2a == 2.5350261094110822
+    assert np.allclose(sim_a2a, 2.5350, atol=1e-2)
     assert sim_a2a > sim_a2b
     assert sim_a2a > sim_a2c
 

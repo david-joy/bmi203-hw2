@@ -68,6 +68,37 @@ def read_active_site(filepath):
     return active_site
 
 
+def read_clustering(filename):
+    """ Read the clustering in
+
+    :param filename:
+        The cluster file to read
+    :returns:
+        A list of lists of active site numbers
+    """
+
+    clusters = []
+    cluster = []
+
+    with open(filename, 'r') as fp:
+        for line in fp:
+            line = line.strip()
+            if line == '':
+                continue
+            if line.startswith('---'):
+                continue
+
+            if line.startswith('Cluster'):
+                if len(cluster) > 0:
+                    clusters.append(cluster)
+                cluster = []
+            else:
+                cluster.append(int(line))
+    if len(cluster) > 0:
+        clusters.append(cluster)
+    return clusters
+
+
 def write_clustering(filename, clusters):
     """
     Write the clustered ActiveSite instances out to a file.
@@ -76,14 +107,11 @@ def write_clustering(filename, clusters):
     Output: none
     """
 
-    out = open(filename, 'w')
-
-    for i in range(len(clusters)):
-        out.write("\nCluster %d\n--------------\n" % i)
-        for j in range(len(clusters[i])):
-            out.write("%s\n" % clusters[i][j])
-
-    out.close()
+    with open(filename, 'w') as out:
+        for i in range(len(clusters)):
+            out.write("\nCluster %d\n--------------\n" % i)
+            for j in range(len(clusters[i])):
+                out.write("%s\n" % clusters[i][j])
 
 
 def write_mult_clusterings(filename, clusterings):
@@ -93,15 +121,20 @@ def write_mult_clusterings(filename, clusterings):
     Input: a filename and a list of clusterings of ActiveSite instances
     Output: none
     """
+    # Support nested heirarchies because two levels isn't enough...
 
-    out = open(filename, 'w')
+    # Initialize the stack and counter
+    targets = clusterings
+    cluster_count = -1
 
-    for i in range(len(clusterings)):
-        clusters = clusterings[i]
-
-        for j in range(len(clusters)):
-            out.write("\nCluster %d\n------------\n" % j)
-            for k in range(len(clusters[j])):
-                out.write("%s\n" % clusters[j][k])
-
-    out.close()
+    with open(filename, 'w') as out:
+        while len(targets) > 0:
+            target = targets.pop(0)
+            if all([isinstance(t, ActiveSite) for t in target]):
+                cluster_count += 1
+                out.write("\nCluster %d\n------------\n" % cluster_count)
+                for active_site in target:
+                    out.write("%s\n" % active_site)
+            else:
+                # Got a list, add it to the stack
+                targets.extend(target)

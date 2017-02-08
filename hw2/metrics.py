@@ -77,6 +77,38 @@ def project_clustering(clustering, num_dims=2):
     return clustering_coords
 
 
+def summarize_clustering(clustering):
+    """ Print out the tables for the report """
+
+    active_sites = [c for cluster in flatten_clusters(clustering) for c in cluster]
+    silhouette = silhouette_index(clustering)
+    davies = davies_bouldin_index(clustering)
+
+    assert len(active_sites) == len(silhouette)
+
+    # Find top ten/bottom ten
+    indicies = np.argsort(silhouette)
+    silhouette = [silhouette[i] for i in indicies]
+    active_sites = [active_sites[i] for i in indicies]
+
+    print('Worst Scores:<br />')
+    print('PDB File | Silhouette Score')
+    print('--- | ---')
+
+    for site, score in zip(active_sites[:10], silhouette[:10]):
+        print('{} | {}'.format(site.name, score))
+
+    print('Best Scores:<br />')
+    print('PDB File | Silhouette Score')
+    print('--- | ---')
+
+    for site, score in zip(active_sites[-10:], silhouette[-10:]):
+        print('{} | {}'.format(site.name, score))
+
+    print('Average Silhouette: {}'.format(np.mean(silhouette)))
+    print('Davies-Bouldin Index: {}'.format(davies))
+
+
 # Clustering Metrics
 
 
@@ -211,3 +243,47 @@ def silhouette_index(clustering):
         index.extend(scores)
 
     return index
+
+
+def pairwise_agreement(clusters_a, clusters_b):
+    """ Calculate shared information between clusters
+
+    :param clusters_a:
+        First set of clusters
+    :param clusters_b:
+        Second set of clusters
+    :returns:
+        The average agreement between assignments
+    """
+    # Code the cluster assignments into numbers
+    clusters_a = flatten_clusters(clusters_a)
+    clusters_b = flatten_clusters(clusters_b)
+
+    # Sort largest clusters first
+    clusters_a = list(sorted(clusters_a, key=lambda x: len(x), reverse=True))
+    clusters_b = list(sorted(clusters_b, key=lambda x: len(x), reverse=True))
+
+    norm = len(clusters_b)
+
+    # Total up agreement between best cluster assignments
+    agreement = 0.0
+
+    for cluster_a in clusters_a:
+
+        # Find the cluster in b closest to a
+        best_score = -1
+        best_index = None
+        for j, cluster_b in enumerate(clusters_b):
+
+            score = len([c for c in cluster_a if c in cluster_b])
+            if score > best_score:
+                best_score = score
+                best_index = j
+        if best_index is None:
+            continue
+
+        cluster_b = clusters_b.pop(best_index)
+        cluster_len = max([len(cluster_a), len(cluster_b)])
+
+        agreement += best_score / cluster_len
+    return agreement / norm

@@ -33,9 +33,10 @@ class Residue:
     def alpha_carbon(self):
         """ Lookup the atom representing the alpha carbon """
         for atom in self.atoms:
-            if atom.type == 'CA':
+            if atom.type in ('CA', 'CA A', 'C  A'):
                 return atom
         # Le sad: no alpha carbon found
+        print(self.atoms)
         return None
 
 
