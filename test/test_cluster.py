@@ -7,7 +7,7 @@ import numpy as np
 
 
 def test_mscluster():
-
+    # Make sure the tree can cluster our data sensibly
     coords = np.array([
         [0, 1],
         [1, 1],
@@ -80,6 +80,7 @@ def test_similarity():
 
     # Distance metric properties
     sim_a2a = cluster.compute_similarity(activesite_a, activesite_a)
+    sim_b2b = cluster.compute_similarity(activesite_b, activesite_b)
 
     sim_a2b = cluster.compute_similarity(activesite_a, activesite_b)
     sim_b2a = cluster.compute_similarity(activesite_b, activesite_a)
@@ -91,6 +92,8 @@ def test_similarity():
     assert sim_a2a == 2.5350261094110822
     assert sim_a2a > sim_a2b
     assert sim_a2a > sim_a2c
+
+    assert sim_b2b > sim_b2c
 
     # Transitivity
     assert sim_a2b == sim_b2a
@@ -119,7 +122,7 @@ def test_compute_similarity_matrix():
 
 def test_partition_clustering():
     # tractable subset
-    pdb_ids = [276, 4629, 10701]
+    pdb_ids = [276, 1806, 3458, 3733, 4629, 10701]
 
     active_sites = []
     for id in pdb_ids:
@@ -130,11 +133,12 @@ def test_partition_clustering():
     np.random.seed(1)
 
     # Cluster order isn't guaranteed, so compare sets
-    exp_clusters = {(276, 4629), (10701,)} 
+    exp_clusters = {(3458, 3733, 4629, 10701), (276, 1806)}
     res_clusters = cluster.cluster_by_partitioning(
-        active_sites, decay=0.01)
+        active_sites, decay=0.1)
     res_clusters = {tuple([int(c.name) for c in cluster])
                     for cluster in res_clusters}
+    print(res_clusters)
     assert res_clusters == exp_clusters
 
 

@@ -38,7 +38,7 @@ class MSCluster(object):
 
     Store a mapping of coordinates to original indicies in the active site
     array. This way I don't get headaches from a bunch of nested lists.
-    
+
     It preforms a 2-way split at each level
 
     :param coords:
@@ -76,7 +76,7 @@ class MSCluster(object):
         # Find the farthest node from the center
         cluster_center = np.mean(self.coords, axis=0)[np.newaxis, :]
         cluster_dist = np.sum((self.coords - cluster_center)**2, axis=1)
-        
+
         # Add the object farthest from the center to the splinter group
         splinter_indicies = [int(np.argmax(cluster_dist))]
 
@@ -87,18 +87,21 @@ class MSCluster(object):
             remainder_coords = self.coords[remainder_indicies, :]
 
             if remainder_coords.shape[0] < 2:
-                # Everything splintered off (happens if we try to split a 2 point node)
-                remainder_indicies = [i for i in range(self.coords.shape[0])]
+                # Everything splintered off (happens if we try to split a 2
+                # point node)
+                remainder_indicies = []
                 splinter_indicies = []
                 break
 
-            # Try to find a point nearer to the splinter group than the remainder group
-            diffs = self.calc_splinter_diffs(remainder_coords, splinter_coords)
+            # Try to find a point nearer to the splinter group than the
+            # remainder group
+            diffs = self.calc_splinter_diffs(remainder_coords,
+                                             splinter_coords)
 
             if np.all(diffs <= 0):
                 # Splinter group failed, merge back into the fold
                 if len(splinter_indicies) <= 1:
-                    remainder_indicies = [i for i in range(self.coords.shape[0])]
+                    remainder_indicies = []
                     splinter_indicies = []
                 break
 
@@ -220,10 +223,10 @@ def compute_similarity(site_a, site_b):
             # Exponentially weight the distance
             # This makes the contribution of non-close residues fall off
             # quickly
-            
+
             # Weigh by the BLOSUM score so identical residues contribute highly
             # and distinct residues barely matter
-            
+
             # The original paper has a term for proximity to the ligand, but
             # we don't have that information, so instead weigh by how
             # frequently this amino acid is found in an active sites
@@ -266,7 +269,7 @@ def convert_similarity_to_distance(similarity):
     # because anything else doesn't really make much sense
     similarity = similarity.astype(np.float64)
     max_similarity = np.max(similarity)
-    
+
     # Normalize the maximum similarity to 1.0
     # Distance is inverse similarity (0.0 = closest) (1.0 = farthest)
     distance = 1.0 - similarity / max_similarity
@@ -303,11 +306,11 @@ def multidimensional_scaling(similarity, num_dims=2):
     similarity = similarity.copy()
     num_sites = similarity.shape[0]
     assert similarity.shape[1] == similarity.shape[0]
+
     if num_sites < num_dims:
         err = 'Cannot embed {} sites in {} dimensions'
         err = err.format(num_sites, num_dims)
         raise ValueError(err)
-    assert num_sites >= num_dims
 
     distance = convert_similarity_to_distance(similarity)
 
@@ -339,7 +342,7 @@ def cluster_by_partitioning(active_sites, decay=0.5, num_iters=100):
     Output: a clustering of ActiveSite instances
             (this is really a list of clusters, each of which is list of
             ActiveSite instances)
-    
+
     :param decay:
         The damping factor for messages
         Faster decay creates fewer clusters (paper value: 0.5)
@@ -460,7 +463,7 @@ def cluster_hierarchically(active_sites, num_dims=2):
     Output: a list of clusterings
             (each clustering is a list of lists of Sequence objects)
     """
-    
+
     # Macnaughton-Smith Divisive Clustering
     # Macnaughton-Smith, P., Williams, W., Dale, M., and Mockett, L. (1964).
     # Dissimilarity analysis: a new technique of hierarchical sub-division.
